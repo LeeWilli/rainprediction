@@ -19,6 +19,7 @@ from sklearn.preprocessing import StandardScaler, Imputer
 import tflearn
 import pdb
 from tensorflow import reset_default_graph
+import pprint
 
 DATA_DIR = '/Users/harryxu/Downloads/data/因子/' if \
     os.environ['PWD'] == '/Users/harryxu/repos/weather-percipitation' \
@@ -39,8 +40,8 @@ LABEL_PATH = DATA_DIR + 'percipitation.xlsx'
 K_FOLD_SPLITS = 5
 K_FOLDS_TO_RUN = 3 # K_FOLDS_TO_RUN <= K_FOLD_SPLITS
 MAX_N_FEATURE_SELECT = 10
-CITIES = tuple([str(x) for x in range(10)])#'0' # tuple(range(140)) # tuple(range(140)) # tuple([str(x) for x in range(3)]) + ('50', '100')
-ALGOS_TO_RUN =  [ 'xgboost_optimize']#['lasso', 'xgboost', 'knn'] # lasso, xgboost, knn, stepwise
+CITIES = tuple([str(x) for x in range(140)])#'0' # tuple(range(140)) # tuple(range(140)) # tuple([str(x) for x in range(3)]) + ('50', '100')
+ALGOS_TO_RUN =  ['knn','xgboost','svm']#,'SvmOptimize','ensemble']#'xgboost', 'svm'] #'xgboost_optimize']#['lasso', 'xgboost', 'knn'] # lasso, xgboost, knn, stepwise
 TRAIN_RECIPE_PATH = 'data/recipe'
 OUTPUT_PATH = 'data/output'
 STATIC_RECIPE_PATH = 'data/static'
@@ -49,7 +50,7 @@ n_components = 40
 pca = PCA(n_components)
 DUR_TIME = 1
 y_scaler = StandardScaler()
-XGB_PARAMETER_TYPE = 1
+XGB_PARAMETER_TYPE = 0
 
 target_level = 500
 lon_ran = [104.5, 117]
@@ -185,36 +186,37 @@ def create_pickle(file, filepath):
         pickle.dump(file, f)
     print("file created at {}...".format(filepath))
 
+def svm_parameter_optimize(X, y):
+    svr = GridSearchCV(svm.SVR(kernel='rbf'), cv=5,
+                       param_grid={"C": [1e0,1e3],
+                                   "epsilon": [0.3],
+                                   }
+                       )
+    svr.fit(X, y)
+    print('best score:', svr.best_score_)
+    print('svr parameters:', svr.best_params_)
+    return svr
+
 def xgb_parameter_optimize(X, y, p=0):
     xgb_model = XGBRegressor()
-    if p == 0:
-        parameters = {
-            'n_estimators': [100, 300],
-            'max_depth': [4, 6, 8],
-            #'subsample': [0.8, 0.9, 1],
-            'reg_alpha': [0.1, 1, 5, 10],
-            'reg_lambda': [0.1, 1, 5, 10],
-            #'gamma': [0, 0.1, 0.3, 1],
-        }
-    else:
-        parameters = {
-            'n_estimators': [100, 300, 500],
-            'max_depth': [3, 5, 7],
-            #'learning_rate': [0.01, 0.1, 0.2],
-            #'subsample': [0.8, 0.9, 1],
-            'reg_alpha': [0.1, 1, 5, 10],
-            'reg_lambda': [0.1, 1, 5, 10],
-            #'gamma': [0, 0.1, 0.3, 1],
-        }
+    parameters = {
+        'n_estimators': [300,400,500],
+        'max_depth': [3,4,5],
+        'learning_rate': [0.01,0.1],
+        #'subsample': [0.8, 0.9, 1],
+        'reg_alpha': [0,1,10],
+        'reg_lambda': [0,1,10],
+        #'gamma': [0,1],
+    }
     xgb_grid = GridSearchCV(xgb_model,
                             parameters,
-                            cv = 3,
+                            cv = 5,
                             n_jobs = 5,
                             #verbose=True
                              )
 
     xgb_grid.fit(X, y)
-    print('best csocre:', xgb_grid.best_score_)
+    print('best score:', xgb_grid.best_score_)
     print(xgb_grid.best_params_)
     return xgb_grid
 
@@ -319,10 +321,7 @@ def train(X, Y):
             valid_ensemble1.append(val_Y - pred_valid_Y)
 
         if 'SvmOptimize' in ALGOS_TO_RUN:
-            svr = GridSearchCV(svm.SVR(kernel='rbf'), cv=3,
-                               param_grid={"C": [1e0, 1e1, 1e2, 1e3],
-                                           "gamma": np.logspace(-2, 2, 5)})
-            svr.fit(pca_train_X, train_Y)
+            svr = svm_parameter_optimize(pca_train_X, train_Y)
             pred_train_Y = svr.predict(pca_train_X)
             pred_valid_Y = svr.predict(pca_val_X)
 
@@ -483,10 +482,13 @@ def train(X, Y):
     algos_scores = [np.mean(valid_metrics[k]) for k in train_metrics] + [np.mean(valid_ensemble)]
     return algos[int(np.argmin(algos_scores))], algos_scores[int(np.argmin(algos_scores))]#, models[algos[int(np.argmin(algos_scores))]]
 
+def combine_predict(model):
+    return model
+
 def predict(X, Y, test_X, best_algo):
     # PCA
     pred_test_Ys = []
-    if 'xgboost' in best_algo or 'lasso'  or 'xgboost_optimize' or 'svm' in best_algo:
+    if 'xgboost' in best_algo or 'lasso'  or 'xgboost_optimize' or 'svm' or 'SvmOptimize' in best_algo:
         #pca = PCA(n_components=40)
         #gpca.fit(X)
         #pca_X = pca_transform_measure(gpca, X)
@@ -505,15 +507,20 @@ def predict(X, Y, test_X, best_algo):
         pred_test_Y = model.predict(pca_test_X)
         pred_test_Ys.append(pred_test_Y)
 
-    if 'fcn' in ALGOS_TO_RUN:
+    if 'fcn' in best_algo:
         model = build_fcn_model(n_components)
         model.fit(pca_X, Y.reshape(-1,1))
         pred_test_Y = model.predict(pca_test_X).ravel()
         pred_test_Ys.append(pred_test_Y)
 
-    if 'svm' in ALGOS_TO_RUN:
+    if 'svm' in best_algo:
         svm_model = svm.SVR(kernel='rbf')
         svm_model.fit(pca_X, Y)
+        pred_test_Y = svm_model.predict(pca_test_X)
+        pred_test_Ys.append(pred_test_Y)
+
+    if 'SvmOptimize' in best_algo:
+        svm_model = svm_parameter_optimize(pca_X, Y)
         pred_test_Y = svm_model.predict(pca_test_X)
         pred_test_Ys.append(pred_test_Y)
 
@@ -595,19 +602,23 @@ def predict(X, Y, test_X, best_algo):
         n_algo = len(pred_test_Ys)
         pred_test_Y = np.sum(np.array(pred_test_Ys), axis=0) / n_algo
 
+    if 'combine' in best_algo:
+        model = pickle.load('combine_model.pb')
+        pred_test_Y = combine_predict(model)
+
     return pred_test_Y
 
 
 if __name__ == "__main__":
     # Processing data
     # hgt
-    hgt_dataset, hgt_nc_attrs, hgt_nc_dims, hgt_nc_vars = run_ncdump(HGT_PATH, print_features=True)  # 845, 17, 73, 144
+    hgt_dataset, hgt_nc_attrs, hgt_nc_dims, hgt_nc_vars = run_ncdump(HGT_PATH)  # 845, 17, 73, 144
     # air
     air_dataset, air_nc_attrs, air_nc_dims, air_nc_vars = run_ncdump(AIR_PATH)  # 845, 17, 73, 144
     # slp
     #slp_dataset, slp_nc_attrs, slp_nc_dims, slp_nc_vars = run_ncdump(SLP_PATH)  # 845, 73, 144
     # rhum
-    rhum_dataset, rhum_nc_attrs, rhum_nc_dims, rhum_nc_vars = run_ncdump(RHUM_PATH, print_features=True)  # 845, 73, 144
+    rhum_dataset, rhum_nc_attrs, rhum_nc_dims, rhum_nc_vars = run_ncdump(RHUM_PATH)  # 845, 73, 144
     # sst, time_bnds
     #sst_dataset, sst_nc_attrs, sst_nc_dims, sst_nc_vars = run_ncdump(
      #   SST_PATH, print_features=True)  # 1961, 89, 180 (missing values cannot be replaced with approprivate value)
@@ -638,32 +649,13 @@ if __name__ == "__main__":
     X = all_data['X']
     Y = all_data['Y']
 
-    # deal with -9.xx e36 values
-    X[X < -1000] = 0
-
-    #print('X shape:', X.shape)
     best_algo, mae = train(X, Y)
-    recipe = best_algo
-    best_mae += mae
-    create_pickle(recipe, create_filename(TRAIN_RECIPE_PATH, ALGOS_TO_RUN))
-    #print(recipe)
-    # predict
-    output = {}
-    # TODO: load recipe
-
-    #pca_X = pca_transform_measure(gpca, X)
-    #Y = knn_data[i]['Y']
-    test_X = all_data['test_X']
-    #test_X = pca_transform_measure(gpca, test_X)
-
-    # deal with -9.xx e36 values
-    X[X < -1000] = 0
-    test_X[test_X < -1000] = 0
-
+    #best_mae += mae
+    #create_pickle(recipe, create_filename(TRAIN_RECIPE_PATH, ALGOS_TO_RUN))
     print("testing model...")
-    best_alg = recipe
-    #print(models_city)
-    #pca_test_X = pca.transform(test_X)
+    test_X = all_data['test_X']
     pred_test_Y = predict(X, Y, test_X, best_algo)
     output = y_scaler.inverse_transform(pred_test_Y)
+
+    pprint.pprint(output.reshape([6,-1]).transpose())
     create_pickle(output, create_filename(OUTPUT_PATH, ALGOS_TO_RUN))
