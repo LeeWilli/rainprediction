@@ -338,7 +338,6 @@ if __name__ == "__main__":
     pred_test_Y = predict(X, Y, test_X, best_algo)
     output = pred_test_Y#y_scaler.inverse_transform(pred_test_Y)
 
-    print(output.reshape([6,-1]).transpose())
-    #create_pickle(output, create_filename(OUTPUT_PATH, ALGOS_TO_RUN))
-    output_csv(output.reshape([6,-1]).transpose().reshape([-1]))
+    print(output)
+    output_csv(output.reshape([-1]))
 
