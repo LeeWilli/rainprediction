@@ -20,10 +20,11 @@ import tflearn
 import pdb
 from tensorflow import reset_default_graph
 import pprint
+import csv
 
 DATA_DIR = '/Users/harryxu/Downloads/data/因子/' if \
     os.environ['PWD'] == '/Users/harryxu/repos/weather-percipitation' \
-    else '/home/wangli/code/projects/weather/nc/'
+    else '/home/wangli/code/projects/weather/rainprediction/nc/'
 AIR_LEVEL = 850
 HGT_LEVEL = 500
 UWIND_LEVEL = 850
@@ -41,12 +42,12 @@ K_FOLD_SPLITS = 5
 K_FOLDS_TO_RUN = 3 # K_FOLDS_TO_RUN <= K_FOLD_SPLITS
 MAX_N_FEATURE_SELECT = 10
 CITIES = tuple([str(x) for x in range(140)])#'0' # tuple(range(140)) # tuple(range(140)) # tuple([str(x) for x in range(3)]) + ('50', '100')
-ALGOS_TO_RUN =  ['knn','xgboost','svm']#,'SvmOptimize','ensemble']#'xgboost', 'svm'] #'xgboost_optimize']#['lasso', 'xgboost', 'knn'] # lasso, xgboost, knn, stepwise
+ALGOS_TO_RUN =  ['knn','xgboost']#,'SvmOptimize','ensemble']#'xgboost', 'svm'] #'xgboost_optimize']#['lasso', 'xgboost', 'knn'] # lasso, xgboost, knn, stepwise
 TRAIN_RECIPE_PATH = 'data/recipe'
 OUTPUT_PATH = 'data/output'
 STATIC_RECIPE_PATH = 'data/static'
 xgb_models = {}
-n_components = 40
+n_components = -1#40
 pca = PCA(n_components)
 DUR_TIME = 1
 y_scaler = StandardScaler()
@@ -153,7 +154,8 @@ def prepare_data_for_knn(all_X, all_Y, t_before=0, t_after=0):
 def combine_knn_data(knn_data):
     """
 
-    :param knn_data:
+    :param
+        knn_data:140 * (measurement + Loc +  rain volume)
     :return: X:[measurement, Loc]; Y:[output]; test_X:[measurement, Loc]
     """
     combine_data = {'X':[], 'Y':[], 'test_X':[]}
@@ -167,14 +169,13 @@ def combine_knn_data(knn_data):
         combine_data['Y'].append(v['Y'])
         raw_data = np.hstack((v['test_X'], np.tile(loc_data, (v['test_X'].shape[0],1))))
         combine_data['test_X'].append(raw_data)
-    X_scaler = StandardScaler()
+    #X_scaler = StandardScaler()
     for k, v in combine_data.items():
         combine_data[k] = np.concatenate(v)
-
-    combine_data['X'] = X_scaler.fit_transform(combine_data['X'])
-    combine_data['test_X'] = X_scaler.transform(combine_data['test_X'])
-    combine_data['Y'] = y_scaler.fit_transform(combine_data['Y'])[:, 0]
-    #pdb.set_trace()
+    combine_data['Y'] = combine_data['Y'][:,0]
+    #combine_data['X'] = X_scaler.fit_transform(combine_data['X'])
+    #combine_data['test_X'] = X_scaler.transform(combine_data['test_X'])
+    #combine_data['Y'] = y_scaler.fit_transform(combine_data['Y'])[:, 0]
     return combine_data
 
 
@@ -222,7 +223,8 @@ def xgb_parameter_optimize(X, y, p=0):
 
 def pca_fit(pca, data):
     X = data[:, :-2]
-    pca.fit(X)
+    if pca.n_components>0:
+        pca.fit(X)
 
 def pca_transform_measure(pca, data):
     X = data[:,:-2]
@@ -608,6 +610,27 @@ def predict(X, Y, test_X, best_algo):
 
     return pred_test_Y
 
+def combine_pickle2csv(file_name, algos):
+    room_num = 140
+    print(create_filename(file_name, algos))
+    pkl_file = open(create_filename(file_name, algos), 'rb')
+    result = pickle.load(pkl_file)
+    pprint.pprint(result)
+
+    fieldnames = ['room']
+    for y in range(2011,2017):
+        fieldnames.append(str(y))
+    f = open(create_filename(file_name, algos)+'.csv', 'wt')
+    writer = csv.writer(f)
+    writer.writerow(fieldnames)
+    it = iter(result)
+    for i in range(room_num):
+        raw = []
+        raw.append(i)
+        for y in range(2011,2017):
+            raw.append(next(it))
+        writer.writerow(raw)
+    f.close()
 
 if __name__ == "__main__":
     # Processing data
@@ -655,7 +678,9 @@ if __name__ == "__main__":
     print("testing model...")
     test_X = all_data['test_X']
     pred_test_Y = predict(X, Y, test_X, best_algo)
-    output = y_scaler.inverse_transform(pred_test_Y)
+    #output = y_scaler.inverse_transform(pred_test_Y)
 
-    pprint.pprint(output.reshape([6,-1]).transpose())
-    create_pickle(output, create_filename(OUTPUT_PATH, ALGOS_TO_RUN))
+    #print(pred_test_Y)
+    print(pred_test_Y.reshape([-1,6]))
+    create_pickle(pred_test_Y, create_filename(OUTPUT_PATH, ALGOS_TO_RUN))
+    combine_pickle2csv(OUTPUT_PATH, ALGOS_TO_RUN )

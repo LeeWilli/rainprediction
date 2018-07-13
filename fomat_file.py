@@ -6,7 +6,7 @@ import numpy as np
 
 #from harry_main import OUTPUT_PATH
 #from optimize_xgboost import OUTPUT_PATH, ALGOS_TO_RUN, create_filename
-#from combine_optimize_xgboost import OUTPUT_PATH, ALGOS_TO_RUN, create_filename
+from combine_optimize_xgboost import OUTPUT_PATH, ALGOS_TO_RUN, create_filename
 
 file_name = 'data/output_combine_knn_xgboost_svm_best_1.csv'
 def pickle2csv0(file_name):
@@ -58,7 +58,7 @@ def combine_pickle2csv(file_name, algos):
     print(create_filename(file_name, algos))
     pkl_file = open(create_filename(file_name, algos), 'rb')
     result = pickle.load(pkl_file)
-    pprint.pprint(result)
+    pprint.pprint(result.reshape([-1,6]))
 
     fieldnames = ['room']
     for y in range(2011,2017):
@@ -109,11 +109,13 @@ def load_pickle(file_name):
 if __name__ == "__main__":
     #pickle2csv0(OUTPUT_PATH)
     #pickle2csv(OUTPUT_PATH, ALGOS_TO_RUN)
-    #combine_pickle2csv(OUTPUT_PATH, ALGOS_TO_RUN)
-    combine_csv2pickle(file_name)
+    combine_pickle2csv(OUTPUT_PATH, ALGOS_TO_RUN)
+    #combine_csv2pickle(file_name)
     #load_pickle(file_name)
 
-    with open('combine_model.pb', 'rb') as pickle_file:
-        model = pickle.load(pickle_file)
-        print(model)
+    '''create a best result from two files. 
+        with open('combine_model.pb', 'rb') as pickle_file:
+            model = pickle.load(pickle_file)
+            print(model)
+    '''
 
