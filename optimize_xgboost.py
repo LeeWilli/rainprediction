@@ -17,6 +17,7 @@ from xgboost.sklearn import XGBRegressor
 from sklearn import svm
 from sklearn.preprocessing import StandardScaler, Imputer
 import tflearn
+import csv
 import pdb
 
 DATA_DIR = '/Users/harryxu/Downloads/data/因子/' if \
@@ -39,7 +40,7 @@ K_FOLD_SPLITS = 5
 K_FOLDS_TO_RUN = 3 # K_FOLDS_TO_RUN <= K_FOLD_SPLITS
 MAX_N_FEATURE_SELECT = 10
 CITIES = tuple([str(x) for x in range(140)])#'0' # tuple(range(140)) # tuple(range(140)) # tuple([str(x) for x in range(3)]) + ('50', '100')
-ALGOS_TO_RUN =  ['knn', 'xgboost','svm']#, 'xgboost_optimize']#['lasso', 'xgboost', 'knn'] # lasso, xgboost, knn, stepwise
+ALGOS_TO_RUN =  ['xgboost','svm', 'knn']#, 'xgboost_optimize']#['lasso', 'xgboost', 'knn'] # lasso, xgboost, knn, stepwise
 TRAIN_RECIPE_PATH = 'data/recipe'
 OUTPUT_PATH = 'data/output'
 STATIC_RECIPE_PATH = 'data/static'
@@ -175,21 +176,49 @@ def build_neural_network_model():
 
 def xgb_parameter_optimize(X, y):
     xgb_model = XGBRegressor()
-    n_estimators = [100, 200, 300, 400]#[500]#
-    max_depth = [2, 3, 4, 5]#[3]#
-    learning_rate = [ 0.01, 0.1, 0.2]#[0.01]#
-    parameters = dict(max_depth=max_depth, n_estimators=n_estimators, learning_rate=learning_rate)
+    parameters = {
+        'n_estimators': [200,300,500,600],
+        'max_depth': [3,4,5],
+        #'learning_rate': [0.01,0.1],
+        #'subsample': [0.8, 0.9, 1],
+        #'reg_alpha': [0,1,10],
+        #'reg_lambda': [0,1,10],
+        #'gamma': [0,1,2],
+    }
     xgb_grid = GridSearchCV(xgb_model,
                             parameters,
-                            cv = 3,
+                            cv = 5,
                             n_jobs = 5,
                             #verbose=True
                              )
 
     xgb_grid.fit(X, y)
-    print(xgb_grid.best_score_)
+    print('best score:', xgb_grid.best_score_)
     print(xgb_grid.best_params_)
     return xgb_grid
+
+def svm_parameter_optimize(X, y):
+    svr = GridSearchCV(svm.SVR(kernel='rbf'), cv=5,
+                       param_grid={"C": [1e0,1e3],
+                                   "epsilon": [0.3],
+                                   }
+                       )
+    svr.fit(X, y)
+    print('best score:', svr.best_score_)
+    print('svr parameters:', svr.best_params_)
+    return svr
+
+def svm_parameter_optimize1(X, y):
+    svr = GridSearchCV(svm.SVR(kernel='rbf', gamma=0.1), cv=3,
+                       param_grid={#"C": [1e0, 1e1, 1e2, 1e3],
+                                   "epsilon": [0.01, 0.05, 0.1, 0.2],
+                                   "degree": [2, 3, 5, 7],
+                                   #"gamma": np.logspace(-2, 2, 5),
+                                   "kernel": ['linear', 'poly']})
+    svr.fit(X, y)
+    #print('best score:', svr.best_score_)
+    #print('svr parameters:', svr.best_params_)
+    return svr
 
 def train(X, Y):
     """search params and try different algs in ALGOS_TO_RUN;
@@ -219,15 +248,17 @@ def train(X, Y):
         valid_ensemble1 = []
 
         # PCA
-        if 'xgboost' in ALGOS_TO_RUN or 'lasso' in ALGOS_TO_RUN or 'xgboost_optimize' or 'svm' or 'SvmOptimize' in ALGOS_TO_RUN:
-            #pca = PCA(n_components=40)
-            #print(train_X)
-            #print(train_X[np.isnan(train_X)])
-            pca.fit(train_X)
-            #print("pca explained variance ratio: {}...".format(sum(pca.explained_variance_ratio_)))
-            #print('train_X shape: ', train_X)
-            pca_train_X = pca.transform(train_X)#train_X#
-            pca_val_X = pca.transform(val_X)#val_X#
+        #if 'stepwise' in ALGOS_TO_RUN or 'knn' in ALGOS_TO_RUN or 'xgboost' in ALGOS_TO_RUN \
+         #       or 'lasso' in ALGOS_TO_RUN or 'xgboost_optimize' in ALGOS_TO_RUN or 'svm' in ALGOS_TO_RUN \
+          #      or 'SvmOptimize' in ALGOS_TO_RUN:
+        #pca = PCA(n_components=40)
+        #print(train_X)
+        #print(train_X[np.isnan(train_X)])
+        pca.fit(train_X)
+        #print("pca explained variance ratio: {}...".format(sum(pca.explained_variance_ratio_)))
+        #print('train_X shape: ', train_X)
+        pca_train_X = pca.transform(train_X)#train_X#
+        pca_val_X = pca.transform(val_X)#val_X#
 
         if 'lasso' in ALGOS_TO_RUN:
             # lasso
@@ -246,14 +277,7 @@ def train(X, Y):
             valid_ensemble1.append(val_Y - pred_valid_Y)
 
         if 'SvmOptimize' in ALGOS_TO_RUN:
-            svr = GridSearchCV(svm.SVR(kernel='rbf', gamma=0.1), cv=3,
-                               param_grid={"C": [1e0, 1e1, 1e2, 1e3],
-                                           "epsilon": [0.01, 0.05, 0.1, 0.2],
-                                           "degree": [2, 3, 4],
-                                           "gamma": np.logspace(-2, 2, 5),
-                                            "kernel": ['linear','poly','rbf','sigmoid']})
-            svr.fit(pca_train_X, train_Y)
-            print('svr parameters:', svr.best_params_)
+            svr = svm_parameter_optimize1(pca_train_X, train_Y)
             pred_train_Y = svr.predict(pca_train_X)
             pred_valid_Y = svr.predict(pca_val_X)
 
@@ -428,12 +452,15 @@ def train(X, Y):
 def predict(X, Y, test_X, best_algo):
     # PCA
     pred_test_Ys = []
-    if 'xgboost' in best_algo or 'lasso'  or 'xgboost_optimize'  or 'svm' in best_algo:
+    #pred_test_Y = []
+    #if 'stepwise' in best_algo or 'knn' in best_algo or 'xgboost' in best_algo \
+     #       or 'svm' in best_algo or 'lasso' in best_algo or 'xgboost_optimize' in best_algo \
+      #      or 'SvmOptimize' in best_algo:
         #pca = PCA(n_components=40)
-        pca.fit(X)
-        print("pca explained variance ratio: {}...".format(sum(pca.explained_variance_ratio_)))
-        pca_X = pca.transform(X)
-        pca_test_X = pca.transform(test_X)
+    pca.fit(X)
+    #print("pca explained variance ratio: {}...".format(sum(pca.explained_variance_ratio_)))
+    pca_X = pca.transform(X)
+    pca_test_X = pca.transform(test_X)
 
     if 'lasso' in best_algo:
         # lasso
@@ -442,15 +469,12 @@ def predict(X, Y, test_X, best_algo):
         pred_test_Y = model.predict(pca_test_X)
         pred_test_Ys.append(pred_test_Y)
 
-    if 'SvmOptimize' in ALGOS_TO_RUN:
-        svr = GridSearchCV(svm.SVR(kernel='rbf', gamma=0.1), cv=5,
-                           param_grid={"C": [1e0, 1e1, 1e2, 1e3],
-                                       "gamma": np.logspace(-2, 2, 5)})
-        svr.fit(pca_X, Y)
+    if 'SvmOptimize' in best_algo:
+        svr = svm_parameter_optimize1(pca_X, Y)
         pred_test_Y = svr.predict(pca_test_X)
         pred_test_Ys.append(pred_test_Y)
 
-    if 'svm' in ALGOS_TO_RUN:
+    if 'svm' in best_algo:
         svm_model = svm.SVR(kernel='rbf')
         svm_model.fit(pca_X, Y)
         pred_test_Y = svm_model.predict(pca_test_X)
@@ -535,17 +559,38 @@ def predict(X, Y, test_X, best_algo):
 
     return pred_test_Y
 
+def pickle2csv(file_name, algos):
+    print(create_filename(file_name, algos))
+    pkl_file = open(create_filename(file_name, algos), 'rb')
+    result = pickle.load(pkl_file)
+    print(result)
+    #for i in range(room_num):
+     #   print(result[str(i)])
+
+    fieldnames = ['room']
+    for y in range(2011,2017):
+        fieldnames.append(str(y))
+    f = open(create_filename(file_name, algos)+'.csv', 'wt')
+    writer = csv.writer(f)
+    writer.writerow(fieldnames)
+    for i in CITIES:
+        raw = []
+        raw.append(i)
+        for j in result[str(i)]:
+            raw.append(j)
+        writer.writerow(raw)
+    f.close()
 
 if __name__ == "__main__":
     # Processing data
     # hgt
-    hgt_dataset, hgt_nc_attrs, hgt_nc_dims, hgt_nc_vars = run_ncdump(HGT_PATH, print_features=True)  # 845, 17, 73, 144
+    hgt_dataset, hgt_nc_attrs, hgt_nc_dims, hgt_nc_vars = run_ncdump(HGT_PATH)  # 845, 17, 73, 144
     # air
     air_dataset, air_nc_attrs, air_nc_dims, air_nc_vars = run_ncdump(AIR_PATH)  # 845, 17, 73, 144
     # slp
     #slp_dataset, slp_nc_attrs, slp_nc_dims, slp_nc_vars = run_ncdump(SLP_PATH)  # 845, 73, 144
     # rhum
-    rhum_dataset, rhum_nc_attrs, rhum_nc_dims, rhum_nc_vars = run_ncdump(RHUM_PATH, print_features=True)  # 845, 73, 144
+    rhum_dataset, rhum_nc_attrs, rhum_nc_dims, rhum_nc_vars = run_ncdump(RHUM_PATH)  # 845, 73, 144
     # sst, time_bnds
     #sst_dataset, sst_nc_attrs, sst_nc_dims, sst_nc_vars = run_ncdump(
      #   SST_PATH, print_features=True)  # 1961, 89, 180 (missing values cannot be replaced with approprivate value)
@@ -575,18 +620,18 @@ if __name__ == "__main__":
 
         X = knn_data[i]['X']
         Y = knn_data[i]['Y']
-        print("Y:",Y)
+        #print("Y:",Y)
 
         # deal with -9.xx e36 values
         #X[X < -1000] = 0
 
-        best_algo, mae = train(X, Y)
-        recipe[i] = best_algo
+        best_algos, mae = train(X, Y)
+        recipe[i] = best_algos
         best_mae += mae
         #models_city[i] = models
     #create_pickle(recipe, create_filename(TRAIN_RECIPE_PATH, ALGOS_TO_RUN))
 
-    print(recipe)
+    #print(recipe)
     recipe_count = {}
     for key, value in recipe.items():
         #print(value)
@@ -601,22 +646,25 @@ if __name__ == "__main__":
     output = {}
     # TODO: load recipe
     for i in CITIES:
-        print("predicting for city {} based on trained best_algo...".format(i))
+        #print("predicting for city {} based on trained best_algo...".format(i))
 
         X = knn_data[i]['X']
         Y = knn_data[i]['Y']
         test_X = knn_data[i]['test_X']
 
         # deal with -9.xx e36 values
-        X[X < -1000] = 0
-        test_X[test_X < -1000] = 0
+        #X[X < -1000] = 0
+        #test_X[test_X < -1000] = 0
 
-        best_alg = recipe[i]
+        best_a = recipe[i]
         #print(models_city)
         #pca_test_X = pca.transform(test_X)
-        pred_test_Y = predict(X, Y, test_X, best_algo)
-        output[i] = y_scaler.inverse_transform(pred_test_Y)
+        pred_y = predict(X, Y, test_X, best_a)
+        output[i] = y_scaler.inverse_transform(pred_y)
+        #print("best_a:", best_a)
         #print("test_X:", test_X)
-        print("pred_test_Y:", pred_test_Y)
-        print("output[i]:", output[i])
+        #print("pred_y:", pred_y)
+        #print("output[i]:", output[i])
     create_pickle(output, create_filename(OUTPUT_PATH, ALGOS_TO_RUN))
+
+    pickle2csv(OUTPUT_PATH, ALGOS_TO_RUN)
