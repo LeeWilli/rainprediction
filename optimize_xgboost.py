@@ -40,7 +40,7 @@ K_FOLD_SPLITS = 5
 K_FOLDS_TO_RUN = 3 # K_FOLDS_TO_RUN <= K_FOLD_SPLITS
 MAX_N_FEATURE_SELECT = 10
 CITIES = tuple([str(x) for x in range(140)])#'0' # tuple(range(140)) # tuple(range(140)) # tuple([str(x) for x in range(3)]) + ('50', '100')
-ALGOS_TO_RUN =  ['xgboost','svm', 'knn']#, 'xgboost_optimize']#['lasso', 'xgboost', 'knn'] # lasso, xgboost, knn, stepwise
+ALGOS_TO_RUN = ['svm', 'xgboost', 'lasso']#, 'xgboost_optimize']#['lasso', 'xgboost', 'knn'] # lasso, xgboost, knn, stepwise
 TRAIN_RECIPE_PATH = 'data/recipe'
 OUTPUT_PATH = 'data/output'
 STATIC_RECIPE_PATH = 'data/static'
@@ -557,15 +557,17 @@ def predict(X, Y, test_X, best_algo):
         n_algo = len(pred_test_Ys)
         pred_test_Y = np.sum(np.array(pred_test_Ys), axis=0) / n_algo
 
+    print('best_algo:', best_algo)
+    print('n_algo:', len(pred_test_Ys))
     return pred_test_Y
 
 def pickle2csv(file_name, algos):
     print(create_filename(file_name, algos))
     pkl_file = open(create_filename(file_name, algos), 'rb')
     result = pickle.load(pkl_file)
-    print(result)
-    #for i in range(room_num):
-     #   print(result[str(i)])
+    #print(dict(sorted(result.items())))
+    for key in sorted(result):
+        print("%s: %s" % (key, result[key]))
 
     fieldnames = ['room']
     for y in range(2011,2017):

@@ -429,12 +429,11 @@ def train(X, Y):
 def predict(X, Y, test_X, best_algo):
     # PCA
     pred_test_Ys = []
-    if 'xgboost' in best_algo or 'lasso'  or 'xgboost_optimize'  or 'svm' in best_algo:
-        #pca = PCA(n_components=40)
-        pca.fit(X)
-        print("pca explained variance ratio: {}...".format(sum(pca.explained_variance_ratio_)))
-        pca_X = pca.transform(X)
-        pca_test_X = pca.transform(test_X)
+
+    pca.fit(X)
+    print("pca explained variance ratio: {}...".format(sum(pca.explained_variance_ratio_)))
+    pca_X = pca.transform(X)
+    pca_test_X = pca.transform(test_X)
 
     if 'lasso' in best_algo:
         # lasso
@@ -443,7 +442,7 @@ def predict(X, Y, test_X, best_algo):
         pred_test_Y = model.predict(pca_test_X)
         pred_test_Ys.append(pred_test_Y)
 
-    if 'SvmOptimize' in ALGOS_TO_RUN:
+    if 'SvmOptimize' in best_algo:
         svr = GridSearchCV(svm.SVR(kernel='rbf', gamma=0.1), cv=5,
                            param_grid={"C": [1e0, 1e1, 1e2, 1e3],
                                        "gamma": np.logspace(-2, 2, 5)})
@@ -451,7 +450,7 @@ def predict(X, Y, test_X, best_algo):
         pred_test_Y = svr.predict(pca_test_X)
         pred_test_Ys.append(pred_test_Y)
 
-    if 'svm' in ALGOS_TO_RUN:
+    if 'svm' in best_algo:
         svm_model = svm.SVR(kernel='rbf')
         svm_model.fit(pca_X, Y)
         pred_test_Y = svm_model.predict(pca_test_X)
@@ -534,15 +533,17 @@ def predict(X, Y, test_X, best_algo):
         n_algo = len(pred_test_Ys)
         pred_test_Y = np.sum(np.array(pred_test_Ys), axis=0) / n_algo
 
+    print('best_algo:', best_algo)
+    print('n_algo:', len(pred_test_Ys))
     return pred_test_Y
 
 def pickle2csv(file_name, algos):
     print(create_filename(file_name, algos))
     pkl_file = open(create_filename(file_name, algos), 'rb')
     result = pickle.load(pkl_file)
-    print(result)
-    #for i in range(room_num):
-     #   print(result[str(i)])
+    #print(dict(sorted(result.items())))
+    for key in sorted(result):
+        print("%s: %s" % (key, result[key]))
 
     fieldnames = ['room']
     for y in range(2011,2017):
